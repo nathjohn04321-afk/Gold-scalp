@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>GoldDesk Pro — XAU/USD Trading Desk</title>
+<meta name="description" content="Professional 24/7 XAU/USD market analysis, trade signals, and price alerts." />
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#0b0d10" />
+<meta name="color-scheme" content="dark" />
+
+<!-- iOS install support -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="GoldDesk Pro" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="icon" href="icons/icon-192.png" />
+
+<link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+<!-- ===== Top bar ===== -->
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">GD</span>
+    <div class="brand-text">
+      <strong>GoldDesk Pro</strong>
+      <span class="brand-sub">XAU/USD Desk</span>
+    </div>
+  </div>
+  <div class="top-status">
+    <span id="sessionBadge" class="session-badge">--</span>
+    <span id="connDot" class="conn-dot offline" title="Data connection"></span>
+  </div>
+</header>
+
+<!-- ===== Views ===== -->
+<main id="app">
+
+  <!-- ---------- DASHBOARD ---------- -->
+  <section id="view-dashboard" class="view active">
+
+    <div class="price-hero card">
+      <div class="price-hero-top">
+        <span class="pair-label">XAU/USD</span>
+        <span id="dataSourceTag" class="data-tag">SIMULATED</span>
+      </div>
+      <div class="price-main">
+        <span id="livePrice">----.--</span>
+      </div>
+      <div class="price-sub">
+        <span id="priceChange" class="chg">--</span>
+        <span id="priceChangePct" class="chg">--</span>
+        <span id="lastUpdated" class="last-updated">updated --</span>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card card">
+        <span class="stat-label">Session High</span>
+        <span id="sessHigh" class="stat-value">--</span>
+      </div>
+      <div class="stat-card card">
+        <span class="stat-label">Session Low</span>
+        <span id="sessLow" class="stat-value">--</span>
+      </div>
+      <div class="stat-card card">
+        <span class="stat-label">Daily Open</span>
+        <span id="dailyOpen" class="stat-value">--</span>
+      </div>
+      <div class="stat-card card">
+        <span class="stat-label">ATR (14, 1H)</span>
+        <span id="atrValue" class="stat-value">--</span>
+      </div>
+    </div>
+
+    <div class="trend-banner card">
+      <span class="trend-label">Trend Status</span>
+      <span id="trendStatus" class="trend-pill trend-range">RANGE</span>
+    </div>
+
+    <button id="generateBtn" class="primary-btn">⚡ Generate Fresh Analysis</button>
+
+    <div class="card section">
+      <h2 class="section-title">Multi-Timeframe Structure</h2>
+      <table class="mtf-table">
+        <thead>
+          <tr><th>TF</th><th>Structure</th><th>Bias</th></tr>
+        </thead>
+        <tbody id="mtfBody">
+          <tr><td>15m</td><td>--</td><td>--</td></tr>
+          <tr><td>1H</td><td>--</td><td>--</td></tr>
+          <tr><td>4H</td><td>--</td><td>--</td></tr>
+          <tr><td>D</td><td>--</td><td>--</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card section">
+      <h2 class="section-title">Key Levels</h2>
+      <div id="keyLevels" class="levels-list">
+        <div class="level-row placeholder">Run analysis to populate levels…</div>
+      </div>
+    </div>
+
+    <div class="card section">
+      <h2 class="section-title">Moving Average Alignment (EMA 21 / 50 / 200)</h2>
+      <div id="maAlignment" class="ma-row">--</div>
+    </div>
+
+    <div class="card section">
+      <h2 class="section-title">Oscillators</h2>
+      <div class="osc-grid">
+        <div class="osc-item"><span>RSI (14)</span><strong id="rsiValue">--</strong></div>
+        <div class="osc-item"><span>MACD</span><strong id="macdValue">--</strong></div>
+        <div class="osc-item"><span>Stochastic</span><strong id="stochValue">--</strong></div>
+      </div>
+    </div>
+
+    <div class="card section">
+      <h2 class="section-title">Order Blocks / Fair Value Gaps</h2>
+      <div id="obFvg" class="ob-list">--</div>
+    </div>
+
+    <div class="card section confluence-card">
+      <h2 class="section-title">Confluence Score</h2>
+      <div class="confluence-bar-wrap">
+        <div id="confluenceBar" class="confluence-bar"></div>
+      </div>
+      <span id="confluenceScore" class="confluence-score">-- / 10</span>
+    </div>
+
+    <div class="card news-card">
+      <h2 class="section-title">⚠ Upcoming High-Impact News</h2>
+      <div id="newsWarning" class="news-body">No scheduled high-impact events loaded. See Settings to connect a news calendar API.</div>
+    </div>
+
+  </section>
+
+  <!-- ---------- SIGNALS ---------- -->
+  <section id="view-signals" class="view">
+    <div class="card signal-card" id="signalCard">
+      <div class="signal-head">
+        <span id="signalDirection" class="signal-direction wait">WAIT</span>
+        <span id="signalConfidence" class="signal-confidence">Confidence --/10</span>
+      </div>
+      <p id="signalNarrative" class="signal-narrative">Tap "Generate Fresh Analysis" on the Dashboard to build today's trade plan.</p>
+
+      <div class="trade-plan" id="tradePlan">
+        <div class="plan-row"><span>Entry Zone</span><strong id="planEntry">--</strong></div>
+        <div class="plan-row"><span>Stop Loss</span><strong id="planSL">--</strong></div>
+        <div class="plan-row"><span>Take Profit 1</span><strong id="planTP1">--</strong></div>
+        <div class="plan-row"><span>Take Profit 2</span><strong id="planTP2">--</strong></div>
+        <div class="plan-row"><span>Risk : Reward</span><strong id="planRR">--</strong></div>
+        <div class="plan-row"><span>Invalidation</span><strong id="planInvalid">--</strong></div>
+      </div>
+
+      <div class="alt-scenario">
+        <h3>Alternative Scenario</h3>
+        <p id="altScenario">--</p>
+      </div>
+    </div>
+
+    <div class="card section">
+      <h2 class="section-title">Signal History</h2>
+      <div id="signalHistory" class="signal-history">
+        <div class="level-row placeholder">No signals generated yet this session.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- ALERTS ---------- -->
+  <section id="view-alerts" class="view">
+    <div class="card section">
+      <h2 class="section-title">Set Price Alert</h2>
+      <form id="alertForm" class="alert-form">
+        <label>
+          Price Level (USD)
+          <input type="number" id="alertPrice" step="0.01" placeholder="e.g. 2415.50" required />
+        </label>
+        <label>
+          Direction
+          <select id="alertDirection">
+            <option value="above">Price rises above</option>
+            <option value="below">Price falls below</option>
+          </select>
+        </label>
+        <label>
+          Note (optional)
+          <input type="text" id="alertNote" placeholder="e.g. Key resistance" maxlength="60" />
+        </label>
+        <button type="submit" class="primary-btn">+ Add Alert</button>
+      </form>
+    </div>
+
+    <div class="card section">
+      <h2 class="section-title">Active Alerts</h2>
+      <div id="activeAlerts" class="alerts-list">
+        <div class="level-row placeholder">No active alerts.</div>
+      </div>
+    </div>
+
+    <div class="card section">
+      <h2 class="section-title">Triggered Log</h2>
+      <div id="triggeredAlerts" class="alerts-list">
+        <div class="level-row placeholder">No alerts triggered yet.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- SETTINGS ---------- -->
+  <section id="view-settings" class="view">
+
+    <div class="card section">
+      <h2 class="section-title">Notifications</h2>
+      <div class="settings-row">
+        <span>Push notifications</span>
+        <button id="notifPermBtn" class="ghost-btn">Enable</button>
+      </div>
+      <p class="settings-hint" id="notifStatusHint">Status: not requested.</p>
+    </div>
+
+    <div class="card section">
+      <h2 class="section-title">Auto-Refresh</h2>
+      <div class="settings-row">
+        <span>Refresh interval</span>
+        <select id="refreshInterval">
+          <option value="60000">1 minute</option>
+          <option value="180000" selected>3 minutes</option>
+          <option value="300000">5 minutes</option>
+          <option value="600000">10 minutes</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card section">
+      <h2 class="section-title">Live Price Data Source</h2>
+      <p class="settings-hint">
+        By default GoldDesk Pro tries a free public XAU/USD price endpoint. If it's unreachable
+        (offline, CORS, rate limit) the app falls back to a locally-simulated price/candle engine
+        so the UI keeps working — this is clearly labeled in the header as <strong>SIMULATED</strong>.
+      </p>
+      <div class="settings-row">
+        <span>Current source</span>
+        <strong id="sourceStatus">--</strong>
+      </div>
+      <label class="settings-block">
+        Optional: Twelve Data API key (for real intraday OHLC)
+        <input type="text" id="apiKeyInput" placeholder="paste API key here" />
+      </label>
+      <button id="saveApiKeyBtn" class="ghost-btn">Save Key</button>
+      <p class="settings-hint">See README.md → "Connecting a Real Gold Price API" for free options and setup steps.</p>
+    </div>
+
+    <div class="card section">
+      <h2 class="section-title">Data</h2>
+      <div class="settings-row">
+        <span>Last analysis cached offline</span>
+        <strong id="cacheStatus">--</strong>
+      </div>
+      <button id="clearDataBtn" class="ghost-btn danger">Clear All Local Data</button>
+    </div>
+
+    <div class="card section disclaimer">
+      <h2 class="section-title">Disclaimer</h2>
+      <p class="settings-hint">
+        GoldDesk Pro provides educational market commentary and algorithmically generated trade ideas.
+        It is <strong>not financial advice</strong>. Trading leveraged FX/metals carries a high risk of loss.
+        Always use proper risk management and never risk more than you can afford to lose.
+      </p>
+      <p class="settings-hint">v1.0.0 — GoldDesk Pro</p>
+    </div>
+
+  </section>
+
+</main>
+
+<!-- ===== Bottom Nav ===== -->
+<nav class="bottom-nav">
+  <button class="nav-btn active" data-view="dashboard">
+    <span class="nav-icon">▦</span><span>Dashboard</span>
+  </button>
+  <button class="nav-btn" data-view="signals">
+    <span class="nav-icon">⚡</span><span>Signals</span>
+  </button>
+  <button class="nav-btn" data-view="alerts">
+    <span class="nav-icon">🔔</span><span>Alerts</span>
+  </button>
+  <button class="nav-btn" data-view="settings">
+    <span class="nav-icon">⚙</span><span>Settings</span>
+  </button>
+</nav>
+
+<div id="toast" class="toast"></div>
+
+<script src="js/storage.js"></script>
+<script src="js/sessions.js"></script>
+<script src="js/indicators.js"></script>
+<script src="js/marketEngine.js"></script>
+<script src="js/priceFeed.js"></script>
+<script src="js/analysisEngine.js"></script>
+<script src="js/signalEngine.js"></script>
+<script src="js/alerts.js"></script>
+<script src="js/notifications.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
