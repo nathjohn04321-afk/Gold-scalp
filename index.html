@@ -156,6 +156,12 @@
         <div class="plan-row"><span>Take Profit 2</span><strong id="planTP2">--</strong></div>
         <div class="plan-row"><span>Risk : Reward</span><strong id="planRR">--</strong></div>
         <div class="plan-row"><span>Invalidation</span><strong id="planInvalid">--</strong></div>
+        <div class="plan-row"><span>Suggested Size</span><strong id="planSize">--</strong></div>
+      </div>
+
+      <div class="alt-scenario" id="managementBlock">
+        <h3>Trade Management</h3>
+        <p id="managementNote">--</p>
       </div>
 
       <div class="alt-scenario">
@@ -234,6 +240,30 @@
           <option value="600000">10 minutes</option>
         </select>
       </div>
+    </div>
+
+    <div class="card section">
+      <h2 class="section-title">Risk Management</h2>
+      <p class="settings-hint">
+        Position sizing controls how much you risk per trade without touching entries or stops —
+        it does not change the strategy's win rate, only the dollar amount at stake. Every trade
+        plan also builds in a partial-profit-at-TP1 + move-stop-to-breakeven step to cut risk on
+        the runner leg.
+      </p>
+      <label class="settings-block">
+        Account Size (USD)
+        <input type="number" id="accountSizeInput" min="0" step="1" placeholder="e.g. 5000" />
+      </label>
+      <label class="settings-block">
+        Risk Per Trade (%)
+        <select id="riskPctInput">
+          <option value="0.25">0.25%</option>
+          <option value="0.5">0.5%</option>
+          <option value="1" selected>1%</option>
+          <option value="2">2%</option>
+        </select>
+      </label>
+      <button id="saveRiskBtn" class="ghost-btn">Save Risk Settings</button>
     </div>
 
     <div class="card section">

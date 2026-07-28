@@ -125,7 +125,33 @@ support-resistance/FVG) is standard and correct regardless of data source.
 
 ---
 
-## 5. Optional: Backend for True Push Notifications
+## 5. Risk Management Model
+
+Every trade plan is built to cut *dollar risk* without touching the entry/
+stop logic that determines whether the underlying setup wins or loses —
+so the win rate of the strategy itself is untouched. Two independent levers:
+
+1. **Position sizing** (Settings → Risk Management): set your account size
+   and a risk-per-trade % (0.25%–2%, default 1%). `js/signalEngine.js`
+   computes a suggested position size in troy ounces from your stop
+   distance — this only changes how much is at stake per trade, never the
+   entry/exit rules, so it cannot move the win rate.
+2. **Partial profit-taking at TP1 + breakeven stop**: every BUY/SELL plan
+   now includes a "Trade Management" instruction — take 50% off at TP1 and
+   move the stop to breakeven on the remainder. This only affects trades
+   that have *already* reached TP1 (i.e. winners), locking in profit and
+   making the TP2 runner risk-free — it doesn't change whether a trade
+   reaches TP1 in the first place.
+
+The structural stop-loss buffer beyond the nearest support/resistance
+level (`SL_STRUCTURE_BUFFER` in `js/signalEngine.js`) was also tightened
+from 0.3×ATR to 0.2×ATR — still comfortably beyond the identified
+swing level (so it isn't clipped by normal noise), just with less
+padding, shaving a bit of risk off every trade.
+
+---
+
+## 6. Optional: Backend for True Push Notifications
 
 As shipped, GoldDesk Pro uses **local notifications** — they fire while the
 app tab or its service worker is alive, which covers the vast majority of
@@ -149,7 +175,7 @@ serverless function + scheduled function trigger.
 
 ---
 
-## 6. Style of Analysis
+## 7. Style of Analysis
 
 Every narrative, signal, and alt-scenario is generated in
 `js/signalEngine.js` and `js/analysisEngine.js` — written to read like a

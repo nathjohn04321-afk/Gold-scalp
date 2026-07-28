@@ -165,6 +165,15 @@
       UI.showToast('Refresh interval updated.');
     });
 
+    document.getElementById('saveRiskBtn').addEventListener('click', () => {
+      const settings = Storage.get(Storage.KEYS.SETTINGS, {});
+      const accountSize = parseFloat(document.getElementById('accountSizeInput').value);
+      settings.accountSize = isFinite(accountSize) && accountSize > 0 ? accountSize : null;
+      settings.riskPct = parseFloat(document.getElementById('riskPctInput').value);
+      Storage.set(Storage.KEYS.SETTINGS, settings);
+      UI.showToast('Risk settings saved.');
+    });
+
     document.getElementById('saveApiKeyBtn').addEventListener('click', () => {
       const val = document.getElementById('apiKeyInput').value.trim();
       Storage.set(Storage.KEYS.API_KEY, val);

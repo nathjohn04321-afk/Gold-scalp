@@ -141,6 +141,17 @@ const UI = (() => {
     document.getElementById('planTP2').textContent = fmt(p.tp2);
     document.getElementById('planRR').textContent = p.rr ? `1 : ${p.rr.toFixed(2)}` : '--';
     document.getElementById('planInvalid').textContent = fmt(p.invalidation);
+    document.getElementById('planSize').textContent = p.sizing
+      ? `${p.sizing.sizeOz.toFixed(3)} oz (${fmt(p.sizing.riskAmount)} risk)`
+      : 'Set account size in Settings';
+
+    const mgmtBlock = document.getElementById('managementBlock');
+    if (p.management) {
+      mgmtBlock.style.display = '';
+      document.getElementById('managementNote').textContent = p.management;
+    } else {
+      mgmtBlock.style.display = 'none';
+    }
   }
 
   function renderSignalHistory() {
@@ -207,6 +218,10 @@ const UI = (() => {
       btn.disabled = false;
       hint.textContent = 'Status: not requested.';
     }
+
+    const settings = Storage.get(Storage.KEYS.SETTINGS, {});
+    document.getElementById('accountSizeInput').value = settings.accountSize || '';
+    document.getElementById('riskPctInput').value = String(settings.riskPct || 1);
 
     const apiKey = Storage.get(Storage.KEYS.API_KEY, '');
     document.getElementById('apiKeyInput').value = apiKey;

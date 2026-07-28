@@ -7,13 +7,34 @@
 const SignalEngine = (() => {
 
   const MIN_CONFLUENCE_TO_ACT = 2.5; // confluenceScore (0-10) below this => WAIT
+  const SL_STRUCTURE_BUFFER = 0.2; // xATR beyond the structural level — tighter than before to cap risk per trade
+  const DEFAULT_RISK_PCT = 1; // % of account risked per trade if the user hasn't set one
+  const PARTIAL_AT_TP1_PCT = 50; // % of position closed at TP1; remainder rides risk-free to TP2
 
   function round2(n) { return Math.round(n * 100) / 100; }
 
   function fmt(n) { return n === null || n === undefined || isNaN(n) ? '--' : `$${round2(n).toFixed(2)}`; }
 
-  function directionWord(dir) {
-    return dir === 'bull' ? 'BUY' : dir === 'bear' ? 'SELL' : 'WAIT';
+  function getRiskSettings() {
+    const settings = Storage.get(Storage.KEYS.SETTINGS, {});
+    return {
+      accountSize: settings.accountSize || null,
+      riskPct: settings.riskPct || DEFAULT_RISK_PCT,
+    };
+  }
+
+  /**
+   * Position sizing is how you lower dollar risk WITHOUT touching the
+   * entry/stop logic that determines whether a trade wins or loses — the
+   * setup's win rate is untouched, only how much is riskable per trade.
+   */
+  function sizePosition(entryPrice, slPrice) {
+    const { accountSize, riskPct } = getRiskSettings();
+    const stopDistance = Math.abs(entryPrice - slPrice);
+    if (!accountSize || stopDistance <= 0) return null;
+    const riskAmount = accountSize * (riskPct / 100);
+    const sizeOz = riskAmount / stopDistance;
+    return { riskAmount, sizeOz, riskPct, accountSize };
   }
 
   function buildTradePlan(analysis) {
@@ -21,13 +42,16 @@ const SignalEngine = (() => {
     const a = atr || price * 0.001;
 
     if (confluenceScore < MIN_CONFLUENCE_TO_ACT || biasDirection === 'neutral') {
-      return { direction: 'WAIT', entry: null, sl: null, tp1: null, tp2: null, rr: null, invalidation: null };
+      return {
+        direction: 'WAIT', entry: null, sl: null, tp1: null, tp2: null, rr: null,
+        invalidation: null, sizing: null, management: null,
+      };
     }
 
     if (biasDirection === 'bull') {
       const entryLow = price - a * 0.25;
       const entryHigh = price + a * 0.1;
-      const sl = (levels.support[0] ?? price - a * 1.4) - a * 0.3;
+      const sl = (levels.support[0] ?? price - a * 1.4) - a * SL_STRUCTURE_BUFFER;
       const risk = price - sl;
       const tp1 = price + risk * 1.5;
       const tp2 = levels.resistance[0] ? Math.max(levels.resistance[0], price + risk * 2.2) : price + risk * 2.5;
@@ -38,13 +62,15 @@ const SignalEngine = (() => {
         sl, tp1, tp2,
         rr,
         invalidation: sl,
+        sizing: sizePosition(price, sl),
+        management: `At TP1, take ${PARTIAL_AT_TP1_PCT}% off and move stop to breakeven ($${price.toFixed(2)}) on the remainder — the runner to TP2 then risks nothing already banked.`,
       };
     }
 
     // bear
     const entryLow = price - a * 0.1;
     const entryHigh = price + a * 0.25;
-    const sl = (levels.resistance[0] ?? price + a * 1.4) + a * 0.3;
+    const sl = (levels.resistance[0] ?? price + a * 1.4) + a * SL_STRUCTURE_BUFFER;
     const risk = sl - price;
     const tp1 = price - risk * 1.5;
     const tp2 = levels.support[0] ? Math.min(levels.support[0], price - risk * 2.2) : price - risk * 2.5;
@@ -55,12 +81,14 @@ const SignalEngine = (() => {
       sl, tp1, tp2,
       rr,
       invalidation: sl,
+      sizing: sizePosition(price, sl),
+      management: `At TP1, take ${PARTIAL_AT_TP1_PCT}% off and move stop to breakeven ($${price.toFixed(2)}) on the remainder — the runner to TP2 then risks nothing already banked.`,
     };
   }
 
   function buildNarrative(analysis, plan) {
     const { price, trendStatus, ma, osc, session, confluenceScore, biasDirection } = analysis;
-    const dirWord = directionWord(biasDirection);
+    const dirWord = plan.direction; // gate narrative off the same threshold the trade plan used
     const sessionLabel = session.label;
 
     const lines = [];
@@ -86,6 +114,13 @@ const SignalEngine = (() => {
           ? `Plan is to buy the dip into the entry zone rather than chase strength — risk is defined below the recent swing low structure.`
           : `Plan is to sell the rip into the entry zone rather than chase weakness — risk is defined above the recent swing high structure.`
       );
+      if (plan.management) lines.push(plan.management);
+      if (plan.sizing) {
+        lines.push(
+          `Sizing: risking ${plan.sizing.riskPct}% of a $${plan.sizing.accountSize.toLocaleString()} account ` +
+          `(~$${plan.sizing.riskAmount.toFixed(2)}) works out to roughly ${plan.sizing.sizeOz.toFixed(3)} oz at this stop distance.`
+        );
+      }
     }
 
     return lines.join('\n\n');
