@@ -10,6 +10,19 @@ const SignalEngine = (() => {
   const SL_STRUCTURE_BUFFER = 0.2; // xATR beyond the structural level — tighter than before to cap risk per trade
   const DEFAULT_RISK_PCT = 1; // % of account risked per trade if the user hasn't set one
   const PARTIAL_AT_TP1_PCT = 50; // % of position closed at TP1; remainder rides risk-free to TP2
+  // Hard safety net: a stop-loss derived from a support/resistance level
+  // should never be allowed to sit further than this many ATRs from price
+  // — e.g. a stale/bad level (see marketEngine.js staleness fix) can never
+  // again produce a wildly-detached stop like $2000 next to a $4000 price.
+  const MAX_SL_ATR_MULT = 4;
+
+  /** Clamps a raw SL so its distance from price never exceeds MAX_SL_ATR_MULT x ATR. */
+  function capStopDistance(price, rawSl, atr, isLong) {
+    const maxDistance = atr * MAX_SL_ATR_MULT;
+    const distance = Math.abs(price - rawSl);
+    if (distance <= maxDistance) return rawSl;
+    return isLong ? price - maxDistance : price + maxDistance;
+  }
 
   function round2(n) { return Math.round(n * 100) / 100; }
 
@@ -51,7 +64,8 @@ const SignalEngine = (() => {
     if (biasDirection === 'bull') {
       const entryLow = price - a * 0.25;
       const entryHigh = price + a * 0.1;
-      const sl = (levels.support[0] ?? price - a * 1.4) - a * SL_STRUCTURE_BUFFER;
+      const rawSl = (levels.support[0] ?? price - a * 1.4) - a * SL_STRUCTURE_BUFFER;
+      const sl = capStopDistance(price, rawSl, a, true);
       const risk = price - sl;
       const tp1 = price + risk * 1.5;
       const tp2 = levels.resistance[0] ? Math.max(levels.resistance[0], price + risk * 2.2) : price + risk * 2.5;
@@ -70,7 +84,8 @@ const SignalEngine = (() => {
     // bear
     const entryLow = price - a * 0.1;
     const entryHigh = price + a * 0.25;
-    const sl = (levels.resistance[0] ?? price + a * 1.4) + a * SL_STRUCTURE_BUFFER;
+    const rawSl = (levels.resistance[0] ?? price + a * 1.4) + a * SL_STRUCTURE_BUFFER;
+    const sl = capStopDistance(price, rawSl, a, false);
     const risk = sl - price;
     const tp1 = price - risk * 1.5;
     const tp2 = levels.support[0] ? Math.min(levels.support[0], price - risk * 2.2) : price - risk * 2.5;

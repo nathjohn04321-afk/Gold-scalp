@@ -21,6 +21,17 @@ const MarketEngine = (() => {
     '1D': { ms: 24 * 60 * 60 * 1000, vol: 0.0035, candles: 260 },
   };
 
+  // If the tab/app has been closed longer than this, the stored candle
+  // history is treated as stale (it can only ever bridge a gap with a
+  // single candle — see updateWithLivePrice) and is fully regenerated.
+  const STALE_AFTER_MS = 6 * 60 * 60 * 1000; // 6 hours
+  // If the live price has drifted this far from the stored history's own
+  // range, the anchor itself is stale (e.g. real price ran from ~$2400 to
+  // ~$4000 while the simulated history never got re-anchored) — old highs
+  // and lows would otherwise be misread as valid support/resistance no
+  // matter how far away they are. Regenerate anchored to the new price.
+  const STALE_PRICE_DRIFT_PCT = 0.12; // 12%
+
   function mulberry32(seed) {
     let a = seed;
     return function () {
@@ -76,12 +87,8 @@ const MarketEngine = (() => {
     Storage.set(Storage.KEYS.CANDLES, data);
   }
 
-  function seedIfNeeded(livePrice) {
-    let store = loadAll();
-    if (store && store.series) return store;
-
+  function freshSeed(livePrice, now) {
     const seed = Math.floor(Math.random() * 2 ** 31);
-    const now = Date.now();
     const series = {};
     Object.entries(TIMEFRAMES).forEach(([tf, cfg], idx) => {
       let candles = generateWalk(cfg.candles, cfg.vol, seed + idx * 7919);
@@ -89,8 +96,39 @@ const MarketEngine = (() => {
       candles = stampTimes(candles, cfg.ms, now);
       series[tf] = candles;
     });
-    store = { seed, series, lastLivePrice: livePrice, lastUpdate: now };
-    saveAll(store);
+    return { seed, series, lastLivePrice: livePrice, lastUpdate: now };
+  }
+
+  /**
+   * A stored history is only valid to keep nudging forward if it was
+   * updated recently AND the live price is still within its own recent
+   * range. Otherwise every old swing high/low silently gets misread as a
+   * "support" or "resistance" level (anything is "below current price"
+   * once price has moved far enough), which is exactly what produced the
+   * $2000 stop-loss report while gold traded near $4000.
+   */
+  function isStale(store, livePrice, now) {
+    if (!store || !store.series) return true;
+    if (now - store.lastUpdate > STALE_AFTER_MS) return true;
+
+    const daily = store.series['1D'] || [];
+    if (!daily.length) return true;
+    const recent = daily.slice(-30);
+    const recentHigh = Math.max(...recent.map(c => c.h));
+    const recentLow = Math.min(...recent.map(c => c.l));
+    const mid = (recentHigh + recentLow) / 2;
+    if (mid > 0 && Math.abs(livePrice - mid) / mid > STALE_PRICE_DRIFT_PCT) return true;
+
+    return false;
+  }
+
+  function seedIfNeeded(livePrice) {
+    const now = Date.now();
+    let store = loadAll();
+    if (isStale(store, livePrice, now)) {
+      store = freshSeed(livePrice, now);
+      saveAll(store);
+    }
     return store;
   }
 
