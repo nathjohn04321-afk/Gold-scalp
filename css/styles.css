@@ -204,6 +204,40 @@ body {
 .trend-bear { background: rgba(230, 80, 80, 0.12); color: var(--red); }
 .trend-strong-bear { background: rgba(230, 80, 80, 0.18); color: var(--red); }
 
+/* ---------- Data quality banner ---------- */
+.dq-banner { padding: 12px 16px; }
+.dq-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.dq-label { font-size: 12.5px; color: var(--text-dim); font-weight: 600; }
+.dq-pill {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 999px;
+  letter-spacing: 0.03em;
+}
+.dq-real { background: rgba(0, 209, 122, 0.18); color: var(--green); }
+.dq-partial { background: rgba(230, 165, 58, 0.18); color: var(--amber); }
+.dq-simulated { background: rgba(230, 80, 80, 0.15); color: var(--red); }
+.dq-detail { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; margin: 0; }
+
+/* ---------- Skeleton loading state ---------- */
+@keyframes shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: 200px 0; }
+}
+.gdp-loading .price-main span,
+.gdp-loading .stat-value,
+.gdp-loading .trend-pill,
+.gdp-loading .dq-pill {
+  color: transparent !important;
+  background: linear-gradient(90deg, var(--bg-elevated) 25%, var(--card-border) 50%, var(--bg-elevated) 75%);
+  background-size: 400px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: 6px;
+  display: inline-block;
+  min-width: 60px;
+}
+
 /* ---------- Buttons ---------- */
 .primary-btn {
   width: 100%;

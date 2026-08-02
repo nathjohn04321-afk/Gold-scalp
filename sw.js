@@ -3,7 +3,7 @@
  * notification click handling. If a backend is later added for true Web
  * Push (see README), the 'push' event handler below already displays it.
  */
-const CACHE_NAME = 'golddesk-pro-v1';
+const CACHE_NAME = 'golddesk-pro-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -12,6 +12,7 @@ const APP_SHELL = [
   './js/storage.js',
   './js/sessions.js',
   './js/indicators.js',
+  './js/realCandles.js',
   './js/marketEngine.js',
   './js/priceFeed.js',
   './js/analysisEngine.js',

@@ -153,6 +153,7 @@ const AnalysisEngine = (() => {
     const dailyStats = MarketEngine.getDailyStats();
     const session = Sessions.getCurrentSession();
     const newsEvents = Sessions.getUpcomingHighImpactEvents();
+    const dataQualityDetail = MarketEngine.getDataQuality();
 
     const analysis = {
       timestamp: Date.now(),
@@ -172,6 +173,8 @@ const AnalysisEngine = (() => {
       priceNearLevel,
       session,
       newsEvents,
+      dataQuality: dataQualityDetail.overall,
+      dataQualityDetail,
     };
 
     Storage.set(Storage.KEYS.LAST_ANALYSIS, analysis);

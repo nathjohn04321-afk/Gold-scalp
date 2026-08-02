@@ -26,15 +26,30 @@ const Indicators = (() => {
     return slice.reduce((a, b) => a + b, 0) / period;
   }
 
+  /**
+   * Wilder-smoothed RSI (the textbook definition — same recursive
+   * smoothing TradingView/MT4 use), not a flat average over the last N
+   * diffs. Smooths over the whole series so the average gain/loss carries
+   * memory from before the visible window, matching standard platforms.
+   */
   function rsi(values, period = 14) {
     if (values.length < period + 1) return null;
     let gains = 0, losses = 0;
-    for (let i = values.length - period; i < values.length; i++) {
+    for (let i = 1; i <= period; i++) {
       const diff = values[i] - values[i - 1];
       if (diff >= 0) gains += diff; else losses -= diff;
     }
-    const avgGain = gains / period;
-    const avgLoss = losses / period;
+    let avgGain = gains / period;
+    let avgLoss = losses / period;
+
+    for (let i = period + 1; i < values.length; i++) {
+      const diff = values[i] - values[i - 1];
+      const gain = diff > 0 ? diff : 0;
+      const loss = diff < 0 ? -diff : 0;
+      avgGain = (avgGain * (period - 1) + gain) / period;
+      avgLoss = (avgLoss * (period - 1) + loss) / period;
+    }
+
     if (avgLoss === 0) return 100;
     const rs = avgGain / avgLoss;
     return 100 - 100 / (1 + rs);
@@ -54,37 +69,58 @@ const Indicators = (() => {
     };
   }
 
-  function stochastic(candles, period = 14, smoothK = 3) {
-    if (candles.length < period + smoothK) return null;
-    const kValues = [];
+  /**
+   * Standard "Slow Stochastic": raw %K per bar, %K = SMA(rawK, smoothK),
+   * %D = SMA(%K series, smoothD). Building full %K/%D series (not just one
+   * point) so %D is a genuine moving average of %K, not an approximation.
+   */
+  function stochastic(candles, period = 14, smoothK = 3, smoothD = 3) {
+    if (candles.length < period + smoothK + smoothD) return null;
+
+    const rawK = [];
     for (let i = period - 1; i < candles.length; i++) {
       const slice = candles.slice(i - period + 1, i + 1);
       const highest = Math.max(...slice.map(c => c.h));
       const lowest = Math.min(...slice.map(c => c.l));
       const close = candles[i].c;
-      const k = highest === lowest ? 50 : ((close - lowest) / (highest - lowest)) * 100;
-      kValues.push(k);
+      rawK.push(highest === lowest ? 50 : ((close - lowest) / (highest - lowest)) * 100);
     }
-    const kSmoothed = sma(kValues, smoothK);
-    const dSlice = kValues.slice(-smoothK - 2);
-    const d = sma(dSlice, smoothK) ?? kSmoothed;
-    return { k: kSmoothed, d };
+
+    const slowK = [];
+    for (let i = smoothK - 1; i < rawK.length; i++) {
+      slowK.push(sma(rawK.slice(0, i + 1), smoothK));
+    }
+
+    const dSeries = [];
+    for (let i = smoothD - 1; i < slowK.length; i++) {
+      dSeries.push(sma(slowK.slice(0, i + 1), smoothD));
+    }
+
+    return { k: slowK[slowK.length - 1], d: dSeries[dSeries.length - 1] };
   }
 
+  /**
+   * Wilder-smoothed ATR (the textbook definition): first value is a simple
+   * average of the first `period` true ranges, then each subsequent value
+   * recursively smooths in the new true range — matching TradingView/MT4.
+   */
   function atr(candles, period = 14) {
     if (candles.length < period + 1) return null;
     const trs = [];
     for (let i = 1; i < candles.length; i++) {
       const cur = candles[i], prev = candles[i - 1];
-      const tr = Math.max(
+      trs.push(Math.max(
         cur.h - cur.l,
         Math.abs(cur.h - prev.c),
         Math.abs(cur.l - prev.c)
-      );
-      trs.push(tr);
+      ));
     }
-    const relevant = trs.slice(-period);
-    return relevant.reduce((a, b) => a + b, 0) / relevant.length;
+
+    let atrVal = trs.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    for (let i = period; i < trs.length; i++) {
+      atrVal = (atrVal * (period - 1) + trs[i]) / period;
+    }
+    return atrVal;
   }
 
   /** Simple fractal-based pivot highs/lows -> clustered into S/R levels. */

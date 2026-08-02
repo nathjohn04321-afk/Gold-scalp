@@ -1,17 +1,18 @@
 /**
- * marketEngine.js — maintains a persistent, multi-timeframe OHLC candle
- * history for XAU/USD, anchored to the live price feed.
+ * marketEngine.js — maintains the multi-timeframe OHLC candle history that
+ * feeds AnalysisEngine, merging two independent sources per timeframe:
  *
- * IMPORTANT / TRANSPARENCY NOTE:
- * Free, no-API-key, CORS-open sources for *historical intraday* gold OHLC
- * data are essentially nonexistent. To keep the dashboard fully functional
- * offline and without any signup, GoldDesk Pro synthesizes a statistically
- * plausible candle history (seeded random walk with regime drift) and then
- * anchors it to whatever the live price feed reports right now. Every
- * refresh cycle nudges the series using the *real* live price, so once a
- * real API key is configured (see README), accuracy improves immediately —
- * the structure/indicator math itself (EMA/RSI/MACD/ATR/S-R/FVG) is
- * standard and correct regardless of the data source.
+ *   1. REAL candles from realCandles.js (Twelve Data key, or the no-key
+ *      Yahoo/GC=F fallback), refreshed on its own ~20min cadence.
+ *   2. A SIMULATED seeded random walk, used only for whichever timeframes
+ *      have no real data available — anchored to the live price and
+ *      self-healing if it goes stale (see isStale below), so it can never
+ *      again silently drift the way it did before this fix (that bug is
+ *      what produced a $2000 stop-loss next to a $4000 live price).
+ *
+ * Every timeframe is tagged with its own data quality ('real' | 'simulated')
+ * so the UI can show an honest REAL / PARTIAL / SIMULATED badge instead of
+ * pretending everything is equally trustworthy.
  */
 const MarketEngine = (() => {
   const TIMEFRAMES = {
@@ -20,17 +21,13 @@ const MarketEngine = (() => {
     '4H': { ms: 4 * 60 * 60 * 1000, vol: 0.0018, candles: 260 },
     '1D': { ms: 24 * 60 * 60 * 1000, vol: 0.0035, candles: 260 },
   };
+  const TF_LIST = Object.keys(TIMEFRAMES);
 
-  // If the tab/app has been closed longer than this, the stored candle
-  // history is treated as stale (it can only ever bridge a gap with a
-  // single candle — see updateWithLivePrice) and is fully regenerated.
-  const STALE_AFTER_MS = 6 * 60 * 60 * 1000; // 6 hours
-  // If the live price has drifted this far from the stored history's own
-  // range, the anchor itself is stale (e.g. real price ran from ~$2400 to
-  // ~$4000 while the simulated history never got re-anchored) — old highs
-  // and lows would otherwise be misread as valid support/resistance no
-  // matter how far away they are. Regenerate anchored to the new price.
-  const STALE_PRICE_DRIFT_PCT = 0.12; // 12%
+  // Simulated-only staleness guards (see js/realCandles.js for the real-data path).
+  const STALE_AFTER_MS = 6 * 60 * 60 * 1000; // 6 hours idle => resync simulated anchor
+  const STALE_PRICE_DRIFT_PCT = 0.12; // 12% drift from recent simulated range => resync
+
+  // ---------------- synthetic engine (fallback only) ----------------
 
   function mulberry32(seed) {
     let a = seed;
@@ -48,10 +45,7 @@ const MarketEngine = (() => {
     let drift = 0;
     const candles = [];
     for (let i = 0; i < count; i++) {
-      if (i % 18 === 0) {
-        // occasional regime shift so MTF structure looks like real trend/range cycles
-        drift = (rand() - 0.5) * vol * 1.4;
-      }
+      if (i % 18 === 0) drift = (rand() - 0.5) * vol * 1.4;
       const open = price;
       const noise = (rand() - 0.5) * vol * 2;
       const close = Math.max(0.001, open * (1 + drift + noise));
@@ -79,41 +73,20 @@ const MarketEngine = (() => {
     }));
   }
 
-  function loadAll() {
-    return Storage.get(Storage.KEYS.CANDLES, null);
+  function synthesizeTf(tf, livePrice, now, seedOffset) {
+    const cfg = TIMEFRAMES[tf];
+    let candles = generateWalk(cfg.candles, cfg.vol, seedOffset);
+    candles = anchorToPrice(candles, livePrice);
+    candles = stampTimes(candles, cfg.ms, now);
+    return candles;
   }
 
-  function saveAll(data) {
-    Storage.set(Storage.KEYS.CANDLES, data);
-  }
-
-  function freshSeed(livePrice, now) {
-    const seed = Math.floor(Math.random() * 2 ** 31);
-    const series = {};
-    Object.entries(TIMEFRAMES).forEach(([tf, cfg], idx) => {
-      let candles = generateWalk(cfg.candles, cfg.vol, seed + idx * 7919);
-      candles = anchorToPrice(candles, livePrice);
-      candles = stampTimes(candles, cfg.ms, now);
-      series[tf] = candles;
-    });
-    return { seed, series, lastLivePrice: livePrice, lastUpdate: now };
-  }
-
-  /**
-   * A stored history is only valid to keep nudging forward if it was
-   * updated recently AND the live price is still within its own recent
-   * range. Otherwise every old swing high/low silently gets misread as a
-   * "support" or "resistance" level (anything is "below current price"
-   * once price has moved far enough), which is exactly what produced the
-   * $2000 stop-loss report while gold traded near $4000.
-   */
-  function isStale(store, livePrice, now) {
-    if (!store || !store.series) return true;
+  function isSyntheticStale(store, tf, livePrice, now) {
+    const candles = store.series[tf];
+    if (!candles || !candles.length) return true;
     if (now - store.lastUpdate > STALE_AFTER_MS) return true;
 
-    const daily = store.series['1D'] || [];
-    if (!daily.length) return true;
-    const recent = daily.slice(-30);
+    const recent = candles.slice(-30);
     const recentHigh = Math.max(...recent.map(c => c.h));
     const recentLow = Math.min(...recent.map(c => c.l));
     const mid = (recentHigh + recentLow) / 2;
@@ -122,28 +95,62 @@ const MarketEngine = (() => {
     return false;
   }
 
-  function seedIfNeeded(livePrice) {
-    const now = Date.now();
-    let store = loadAll();
-    if (isStale(store, livePrice, now)) {
-      store = freshSeed(livePrice, now);
-      saveAll(store);
-    }
+  // ---------------- unified store (persisted) ----------------
+
+  function loadStore() {
+    return Storage.get(Storage.KEYS.CANDLES, null);
+  }
+
+  function saveStore(store) {
+    Storage.set(Storage.KEYS.CANDLES, store);
+  }
+
+  function emptyStore() {
+    return { series: {}, quality: {}, sourceLabel: {}, mergedRealFetchedAt: 0, lastUpdate: 0 };
+  }
+
+  /** Pulls in any newer real candle data from realCache, replacing the synthetic version for those timeframes. */
+  function mergeRealData(store, realCache, livePrice, now) {
+    if (!realCache || !realCache.fetchedAt) return store;
+    if (realCache.fetchedAt <= store.mergedRealFetchedAt) return store; // already merged this batch
+
+    TF_LIST.forEach(tf => {
+      const realSeries = realCache.series[tf];
+      if (realSeries && realSeries.length >= 30) {
+        store.series[tf] = realSeries.map(c => ({ ...c }));
+        store.quality[tf] = 'real';
+        store.sourceLabel[tf] = realCache.source[tf] || 'Real data';
+      }
+    });
+    store.mergedRealFetchedAt = realCache.fetchedAt;
     return store;
   }
 
-  /** Push a new live price tick into every timeframe's forming candle. */
-  function updateWithLivePrice(livePrice) {
-    const store = seedIfNeeded(livePrice);
-    const now = Date.now();
+  /** Fills in synthetic history for any timeframe that still has no data (or whose synthetic data went stale). */
+  function fillSyntheticGaps(store, livePrice, now) {
+    const seedBase = Math.floor(Math.random() * 2 ** 31);
+    TF_LIST.forEach((tf, idx) => {
+      const isReal = store.quality[tf] === 'real';
+      if (isReal) return; // real data refreshes on its own cadence via realCandles.js
+      if (!store.series[tf] || isSyntheticStale(store, tf, livePrice, now)) {
+        store.series[tf] = synthesizeTf(tf, livePrice, now, seedBase + idx * 7919);
+        store.quality[tf] = 'simulated';
+        store.sourceLabel[tf] = 'Local simulation';
+      }
+    });
+    return store;
+  }
 
-    Object.entries(TIMEFRAMES).forEach(([tf, cfg]) => {
+  /** Nudges every timeframe's forming candle with the latest live tick (real or simulated alike). */
+  function applyLiveTick(store, livePrice, now) {
+    TF_LIST.forEach(tf => {
+      const cfg = TIMEFRAMES[tf];
       const candles = store.series[tf];
+      if (!candles || !candles.length) return;
       const last = candles[candles.length - 1];
       const bucketStart = Math.floor(now / cfg.ms) * cfg.ms;
 
       if (bucketStart > last.t) {
-        // roll into a new candle
         candles.push({ t: bucketStart, o: last.c, h: Math.max(last.c, livePrice), l: Math.min(last.c, livePrice), c: livePrice });
         if (candles.length > cfg.candles + 20) candles.shift();
       } else {
@@ -152,22 +159,59 @@ const MarketEngine = (() => {
         last.c = livePrice;
       }
     });
+    return store;
+  }
+
+  /**
+   * Main entry point: refreshes real candles (rate-limit-gated internally),
+   * merges them in, fills any remaining gaps synthetically, and nudges
+   * every timeframe with the latest live price. Call this once per app
+   * refresh cycle; safe to call as often as you like.
+   */
+  async function refresh(livePrice, apiKey) {
+    const now = Date.now();
+    let store = loadStore() || emptyStore();
+
+    let realCache = null;
+    try {
+      realCache = await RealCandles.refresh(apiKey);
+    } catch (e) {
+      console.warn('RealCandles.refresh threw unexpectedly', e);
+      realCache = RealCandles.getCached();
+    }
+
+    store = mergeRealData(store, realCache, livePrice, now);
+    store = fillSyntheticGaps(store, livePrice, now);
+    store = applyLiveTick(store, livePrice, now);
 
     store.lastLivePrice = livePrice;
     store.lastUpdate = now;
-    saveAll(store);
+    saveStore(store);
     return store.series;
   }
 
   function getSeries(timeframe) {
-    const store = loadAll();
-    if (!store) return [];
-    return store.series[timeframe] || [];
+    const store = loadStore();
+    return store?.series?.[timeframe] || [];
   }
 
   function getAllSeries() {
-    const store = loadAll();
+    const store = loadStore();
     return store ? store.series : {};
+  }
+
+  /** { '15m': 'real'|'simulated', ..., overall: 'real'|'partial'|'simulated', realAgeMs } */
+  function getDataQuality() {
+    const store = loadStore();
+    if (!store) return { overall: 'simulated', realAgeMs: null };
+
+    const perTf = {};
+    TF_LIST.forEach(tf => { perTf[tf] = store.quality[tf] || 'simulated'; });
+    const realCount = TF_LIST.filter(tf => perTf[tf] === 'real').length;
+    const overall = realCount === TF_LIST.length ? 'real' : realCount === 0 ? 'simulated' : 'partial';
+    const realAgeMs = store.mergedRealFetchedAt ? Date.now() - store.mergedRealFetchedAt : null;
+
+    return { ...perTf, overall, realAgeMs, sourceLabel: store.sourceLabel || {} };
   }
 
   /** Session/day boundaries derived from the 15m series (UTC calendar day). */
@@ -185,5 +229,5 @@ const MarketEngine = (() => {
     };
   }
 
-  return { TIMEFRAMES, updateWithLivePrice, getSeries, getAllSeries, getDailyStats };
+  return { TIMEFRAMES, refresh, getSeries, getAllSeries, getDailyStats, getDataQuality };
 })();

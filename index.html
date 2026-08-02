@@ -58,6 +58,14 @@
       </div>
     </div>
 
+    <div class="dq-banner card">
+      <div class="dq-top">
+        <span class="dq-label">Analysis Data</span>
+        <span id="dataQualityBadge" class="dq-pill dq-simulated">--</span>
+      </div>
+      <p id="dataQualityDetail" class="dq-detail">Loading…</p>
+    </div>
+
     <div class="stat-grid">
       <div class="stat-card card">
         <span class="stat-label">Session High</span>
@@ -269,16 +277,20 @@
     <div class="card section">
       <h2 class="section-title">Live Price Data Source</h2>
       <p class="settings-hint">
-        By default GoldDesk Pro tries a free public XAU/USD price endpoint. If it's unreachable
-        (offline, CORS, rate limit) the app falls back to a locally-simulated price/candle engine
-        so the UI keeps working — this is clearly labeled in the header as <strong>SIMULATED</strong>.
+        Price falls back through 4 tiers: Twelve Data (if keyed) → gold-api.com →
+        freeforexapi.com → last known-good cached price (age-labeled) → local
+        simulation, only if nothing real is reachable at all. Real OHLC candle
+        history (used for the technical analysis, not just the price) tries
+        Twelve Data first, then a free no-key Yahoo Finance fallback — see the
+        "Analysis Data" badge on the Dashboard for exactly which timeframes are
+        real vs. simulated right now.
       </p>
       <div class="settings-row">
-        <span>Current source</span>
+        <span>Current price source</span>
         <strong id="sourceStatus">--</strong>
       </div>
       <label class="settings-block">
-        Optional: Twelve Data API key (for real intraday OHLC)
+        Optional: Twelve Data API key (for real intraday OHLC + higher rate limits)
         <input type="text" id="apiKeyInput" placeholder="paste API key here" />
       </label>
       <button id="saveApiKeyBtn" class="ghost-btn">Save Key</button>
@@ -301,7 +313,7 @@
         It is <strong>not financial advice</strong>. Trading leveraged FX/metals carries a high risk of loss.
         Always use proper risk management and never risk more than you can afford to lose.
       </p>
-      <p class="settings-hint">v1.0.0 — GoldDesk Pro</p>
+      <p class="settings-hint">v1.2.0 — GoldDesk Pro</p>
     </div>
 
   </section>
@@ -329,6 +341,7 @@
 <script src="js/storage.js"></script>
 <script src="js/sessions.js"></script>
 <script src="js/indicators.js"></script>
+<script src="js/realCandles.js"></script>
 <script src="js/marketEngine.js"></script>
 <script src="js/priceFeed.js"></script>
 <script src="js/analysisEngine.js"></script>

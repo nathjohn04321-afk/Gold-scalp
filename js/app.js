@@ -35,10 +35,18 @@
 
   async function refreshCycle({ silent = false } = {}) {
     try {
-      const tick = await PriceFeed.fetchLivePrice();
+      const apiKey = Storage.get(Storage.KEYS.API_KEY, '');
+
+      // Price tick and real-candle history are independent network calls —
+      // run them concurrently rather than back-to-back so a slow source on
+      // one side doesn't add to the other's latency on mobile connections.
+      const [tick] = await Promise.all([
+        PriceFeed.fetchLivePrice(),
+        RealCandles.refresh(apiKey).catch(e => console.warn('Pre-warm real-candle fetch failed', e)),
+      ]);
       UI.setConnStatus(tick.source);
 
-      MarketEngine.updateWithLivePrice(tick.price);
+      await MarketEngine.refresh(tick.price, apiKey);
 
       const session = Sessions.getCurrentSession();
       UI.setSessionBadge(session);
@@ -213,8 +221,11 @@
     restoreSettingsToForm();
     registerServiceWorker();
 
+    const hadCache = !!Storage.get(Storage.KEYS.LAST_ANALYSIS, null);
+    if (!hadCache) UI.setLoading(true);
+
     loadCachedStateOffline();
-    refreshCycle({ silent: true });
+    refreshCycle({ silent: true }).finally(() => UI.setLoading(false));
     restartRefreshLoop();
 
     setInterval(() => UI.setSessionBadge(Sessions.getCurrentSession()), 60000);

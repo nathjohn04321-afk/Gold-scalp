@@ -29,15 +29,39 @@ const UI = (() => {
     const dot = document.getElementById('connDot');
     const tag = document.getElementById('dataSourceTag');
     dot.classList.remove('online', 'offline', 'simulated');
+    tag.classList.remove('live');
     if (source === 'live') {
       dot.classList.add('online');
       tag.textContent = 'LIVE';
       tag.classList.add('live');
+    } else if (source === 'cached') {
+      dot.classList.add('simulated');
+      tag.textContent = 'CACHED';
     } else {
       dot.classList.add('simulated');
       tag.textContent = 'SIMULATED';
-      tag.classList.remove('live');
     }
+  }
+
+  function renderDataQuality(dataQualityDetail) {
+    const badge = document.getElementById('dataQualityBadge');
+    const detail = document.getElementById('dataQualityDetail');
+    if (!dataQualityDetail) return;
+
+    const overall = dataQualityDetail.overall;
+    badge.className = `dq-pill dq-${overall}`;
+    badge.textContent = overall.toUpperCase();
+
+    const tfLabels = { '15m': '15m', '1H': '1H', '4H': '4H', '1D': 'D' };
+    const parts = Object.keys(tfLabels).map(tf => `${tfLabels[tf]}: ${dataQualityDetail[tf] === 'real' ? 'real' : 'sim'}`);
+    const ageText = dataQualityDetail.realAgeMs != null
+      ? ` — real data refreshed ${Math.max(0, Math.round(dataQualityDetail.realAgeMs / 60000))}m ago`
+      : '';
+    detail.textContent = `${parts.join(' · ')}${ageText}`;
+  }
+
+  function setLoading(isLoading) {
+    document.body.classList.toggle('gdp-loading', isLoading);
   }
 
   function setSessionBadge(session) {
@@ -67,7 +91,9 @@ const UI = (() => {
 
   function renderDashboard(analysis) {
     if (!analysis) return;
-    const { dailyStats, atr, trendStatus, mtf, levels, ma, osc, obFvg, confluenceScore, newsEvents } = analysis;
+    const { dailyStats, atr, trendStatus, mtf, levels, ma, osc, obFvg, confluenceScore, newsEvents, dataQualityDetail } = analysis;
+
+    renderDataQuality(dataQualityDetail);
 
     document.getElementById('sessHigh').textContent = fmt(dailyStats.high);
     document.getElementById('sessLow').textContent = fmt(dailyStats.low);
@@ -234,7 +260,7 @@ const UI = (() => {
   }
 
   return {
-    showToast, switchView, setConnStatus, setSessionBadge, renderPrice,
-    renderDashboard, renderSignal, renderSignalHistory, renderAlerts, renderSettings,
+    showToast, switchView, setConnStatus, setSessionBadge, renderPrice, setLoading,
+    renderDashboard, renderSignal, renderSignalHistory, renderAlerts, renderSettings, renderDataQuality,
   };
 })();

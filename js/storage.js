@@ -11,6 +11,8 @@ const Storage = (() => {
     LAST_SIGNAL: 'gdp_last_signal',
     SIGNAL_HISTORY: 'gdp_signal_history',
     CANDLES: 'gdp_candles',
+    REAL_CANDLES: 'gdp_real_candles',
+    LAST_GOOD_PRICE: 'gdp_last_good_price',
     SETTINGS: 'gdp_settings',
     API_KEY: 'gdp_api_key_twelvedata',
   };

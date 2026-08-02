@@ -7,21 +7,27 @@
 const SignalEngine = (() => {
 
   const MIN_CONFLUENCE_TO_ACT = 2.5; // confluenceScore (0-10) below this => WAIT
-  const SL_STRUCTURE_BUFFER = 0.2; // xATR beyond the structural level — tighter than before to cap risk per trade
   const DEFAULT_RISK_PCT = 1; // % of account risked per trade if the user hasn't set one
   const PARTIAL_AT_TP1_PCT = 50; // % of position closed at TP1; remainder rides risk-free to TP2
-  // Hard safety net: a stop-loss derived from a support/resistance level
-  // should never be allowed to sit further than this many ATRs from price
-  // — e.g. a stale/bad level (see marketEngine.js staleness fix) can never
-  // again produce a wildly-detached stop like $2000 next to a $4000 price.
-  const MAX_SL_ATR_MULT = 4;
 
-  /** Clamps a raw SL so its distance from price never exceeds MAX_SL_ATR_MULT x ATR. */
-  function capStopDistance(price, rawSl, atr, isLong) {
-    const maxDistance = atr * MAX_SL_ATR_MULT;
-    const distance = Math.abs(price - rawSl);
-    if (distance <= maxDistance) return rawSl;
-    return isLong ? price - maxDistance : price + maxDistance;
+  // Stop-loss is always a tight ATR multiple — never a raw structural level
+  // distance. A support/resistance level can nudge the stop within this
+  // band (so it still respects real structure), but can never again drag
+  // it far from price the way a stale/bad level once did (that produced a
+  // $2000 stop next to a $4000 live price). TP1/TP2 are pure R-multiples
+  // of that same risk, so they're immune to bad levels entirely.
+  const SL_MIN_ATR_MULT = 0.5;
+  const SL_MAX_ATR_MULT = 1.5;
+  const SL_DEFAULT_ATR_MULT = 1.0; // used when there's no structural level on the correct side
+  const TP1_R_MULT = 1.5;
+  const TP2_R_MULT = 2.2;
+
+  /** Picks the stop distance: structure-aware, but always clamped to 0.5-1.5x ATR. */
+  function computeStopDistance(atr, structuralDistance) {
+    const minD = atr * SL_MIN_ATR_MULT;
+    const maxD = atr * SL_MAX_ATR_MULT;
+    if (structuralDistance == null || !isFinite(structuralDistance)) return atr * SL_DEFAULT_ATR_MULT;
+    return Math.min(maxD, Math.max(minD, structuralDistance));
   }
 
   function round2(n) { return Math.round(n * 100) / 100; }
@@ -64,17 +70,16 @@ const SignalEngine = (() => {
     if (biasDirection === 'bull') {
       const entryLow = price - a * 0.25;
       const entryHigh = price + a * 0.1;
-      const rawSl = (levels.support[0] ?? price - a * 1.4) - a * SL_STRUCTURE_BUFFER;
-      const sl = capStopDistance(price, rawSl, a, true);
-      const risk = price - sl;
-      const tp1 = price + risk * 1.5;
-      const tp2 = levels.resistance[0] ? Math.max(levels.resistance[0], price + risk * 2.2) : price + risk * 2.5;
-      const rr = (tp1 - price) / risk;
+      const structuralDistance = levels.support[0] != null ? price - levels.support[0] : null;
+      const risk = computeStopDistance(a, structuralDistance);
+      const sl = price - risk;
+      const tp1 = price + risk * TP1_R_MULT;
+      const tp2 = price + risk * TP2_R_MULT;
       return {
         direction: 'BUY',
         entry: [entryLow, entryHigh],
         sl, tp1, tp2,
-        rr,
+        rr: TP1_R_MULT,
         invalidation: sl,
         sizing: sizePosition(price, sl),
         management: `At TP1, take ${PARTIAL_AT_TP1_PCT}% off and move stop to breakeven ($${price.toFixed(2)}) on the remainder — the runner to TP2 then risks nothing already banked.`,
@@ -84,29 +89,40 @@ const SignalEngine = (() => {
     // bear
     const entryLow = price - a * 0.1;
     const entryHigh = price + a * 0.25;
-    const rawSl = (levels.resistance[0] ?? price + a * 1.4) + a * SL_STRUCTURE_BUFFER;
-    const sl = capStopDistance(price, rawSl, a, false);
-    const risk = sl - price;
-    const tp1 = price - risk * 1.5;
-    const tp2 = levels.support[0] ? Math.min(levels.support[0], price - risk * 2.2) : price - risk * 2.5;
-    const rr = (price - tp1) / risk;
+    const structuralDistance = levels.resistance[0] != null ? levels.resistance[0] - price : null;
+    const risk = computeStopDistance(a, structuralDistance);
+    const sl = price + risk;
+    const tp1 = price - risk * TP1_R_MULT;
+    const tp2 = price - risk * TP2_R_MULT;
     return {
       direction: 'SELL',
       entry: [entryHigh, entryLow],
       sl, tp1, tp2,
-      rr,
+      rr: TP1_R_MULT,
       invalidation: sl,
       sizing: sizePosition(price, sl),
       management: `At TP1, take ${PARTIAL_AT_TP1_PCT}% off and move stop to breakeven ($${price.toFixed(2)}) on the remainder — the runner to TP2 then risks nothing already banked.`,
     };
   }
 
+  function dataQualityCaveat(dataQuality) {
+    if (dataQuality === 'partial') {
+      return 'Note: some timeframes are running on simulated history (real data unavailable for them right now) — treat this read as directionally useful but lower-confidence than a full real-data read.';
+    }
+    if (dataQuality === 'simulated') {
+      return 'WARNING: no real market data could be reached (offline, API down, or no key configured) — this entire read is running on locally-simulated data and should not be treated as a live market call.';
+    }
+    return null;
+  }
+
   function buildNarrative(analysis, plan) {
-    const { price, trendStatus, ma, osc, session, confluenceScore, biasDirection } = analysis;
+    const { price, trendStatus, ma, osc, session, confluenceScore, biasDirection, dataQuality } = analysis;
     const dirWord = plan.direction; // gate narrative off the same threshold the trade plan used
     const sessionLabel = session.label;
 
     const lines = [];
+    const caveat = dataQualityCaveat(dataQuality);
+    if (caveat) lines.push(caveat);
 
     if (dirWord === 'WAIT') {
       lines.push(
