@@ -32,7 +32,7 @@ const PriceFeed = (() => {
   const FREE_FOREX_API_URL = 'https://www.freeforexapi.com/api/live?pairs=XAUUSD';
 
   function twelveDataUrl(apiKey) {
-    return `https://api.twelvedata.com/price?symbol=XAU/USD&apikey=${encodeURIComponent(apiKey)}`;
+    return `https://api.twelvedata.com/price?symbol=${encodeURIComponent('XAU/USD')}&apikey=${encodeURIComponent(apiKey)}`;
   }
 
   function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
@@ -66,12 +66,15 @@ const PriceFeed = (() => {
   async function tryTwelveData() {
     const apiKey = Storage.get(Storage.KEYS.API_KEY, '');
     if (!apiKey) return null;
-    return withRetry(async () => {
+    // Routed through TwelveDataQueue so this never overlaps a concurrent
+    // Twelve Data candle-history fetch in realCandles.js — the free plan
+    // rejects parallel requests (see js/twelveDataQueue.js).
+    return TwelveDataQueue.run(() => withRetry(async () => {
       const json = await fetchWithTimeout(twelveDataUrl(apiKey));
       const price = parseFloat(json.price);
       if (!isFinite(price) || price <= 0) throw new Error('Bad Twelve Data payload');
       return { price, source: 'live', provider: 'Twelve Data' };
-    });
+    }));
   }
 
   async function tryGoldApi() {

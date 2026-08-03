@@ -56,8 +56,11 @@ const RealCandles = (() => {
   }
 
   // ---------------- Twelve Data ----------------
+  // NOTE: every call goes through TwelveDataQueue.run() — Twelve Data's
+  // free plan rejects concurrent requests, so these must never fire in
+  // parallel (see js/twelveDataQueue.js for the full explanation).
   async function fetchTwelveData(interval, apiKey) {
-    const url = `https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=${interval}&outputsize=260&timezone=UTC&apikey=${encodeURIComponent(apiKey)}`;
+    const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent('XAU/USD')}&interval=${interval}&outputsize=260&timezone=UTC&apikey=${encodeURIComponent(apiKey)}`;
     const json = await fetchWithTimeout(url);
     if (json.status === 'error' || !Array.isArray(json.values)) {
       throw new Error(json.message || 'Twelve Data returned no series');
@@ -72,17 +75,15 @@ const RealCandles = (() => {
   }
 
   async function fetchAllTwelveData(apiKey) {
-    const [m15, h1, h4, d1] = await Promise.allSettled([
-      fetchTwelveData('15min', apiKey),
-      fetchTwelveData('1h', apiKey),
-      fetchTwelveData('4h', apiKey),
-      fetchTwelveData('1day', apiKey),
-    ]);
+    const intervals = [['15m', '15min'], ['1H', '1h'], ['4H', '4h'], ['1D', '1day']];
     const out = {};
-    [['15m', m15], ['1H', h1], ['4H', h4], ['1D', d1]].forEach(([tf, result]) => {
-      if (result.status === 'fulfilled') out[tf] = result.value;
-      else console.warn(`Twelve Data ${tf} fetch failed`, result.reason);
-    });
+    for (const [tf, interval] of intervals) {
+      try {
+        out[tf] = await TwelveDataQueue.run(() => fetchTwelveData(interval, apiKey));
+      } catch (e) {
+        console.warn(`Twelve Data ${tf} fetch failed`, e);
+      }
+    }
     return out;
   }
 
